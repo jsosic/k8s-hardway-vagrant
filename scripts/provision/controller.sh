@@ -21,8 +21,7 @@ yum -y install nc telnet bind-utils net-tools vim mlocate
 export INTERNAL_IP=$(ip addr show eth1 | grep "inet\\b" | awk '{print $2}' | cut -d/ -f1)
 
 yum -y install etcd kubernetes-master
-if [[ ! -e /etc/etcd/etcd.conf.rpmorig ]]; then
-mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.rpmorig
+[[ ! -e /etc/etcd/etcd.conf.rpmorig ]]; mv /etc/etcd/etcd.conf /etc/etcd/etcd.conf.rpmorig
 
 cat > /etc/etcd/etcd.conf <<EOF
 #[Member]
@@ -106,4 +105,65 @@ systemctl enable --now etcd
 
 # List etcd cluster members
 #ETCDCTL_API=3 etcdctl member list --endpoints=https://127.0.0.1:2379 --cacert=/etc/etcd/ca.pem --cert=/etc/etcd/kubernetes.pem --key=/etc/etcd/kubernetes-key.pem
-fi
+
+
+# control plane installation
+yum -y install kubernetes-master
+
+# api server
+[[ ! -e /etc/kubernetes/apiserver.rpmorig ]] && mv /etc/kubernetes/apiserver /etc/kubernetes/apiserver.rpmorig
+
+cat > /etc/kubernetes/apiserver <<EOF
+###
+# kubernetes system config
+#
+# The following values are used to configure the kube-apiserver
+#
+
+# The address on the local server to listen to.
+KUBE_API_ADDRESS="--bind-address=0.0.0.0"
+
+# The port on the local server to listen on.
+# KUBE_API_PORT="--port=8080"
+
+# Port minions listen on
+# KUBELET_PORT="--kubelet-port=10250"
+
+# Comma separated list of nodes in the etcd cluster
+KUBE_ETCD_SERVERS="--etcd-servers=https://10.240.0.101:2379,https://10.240.0.102:2379,https://10.240.0.103:2379 --etcd-cafile=/var/lib/kubernetes/ca.pem --etcd-certfile=/var/lib/kubernetes/kubernetes.pem --etcd-keyfile=/var/lib/kubernetes/kubernetes-key.pem"
+
+# Address range to use for services
+KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range=10.32.0.0/24"
+
+# default admission control policies
+KUBE_ADMISSION_CONTROL="--admission-control=NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota"
+
+# Add your own!
+KUBE_API_ARGS="--advertise-address=${INTERNAL_IP} \\
+ --apiserver-count=3 \\
+ --authorization-mode=RBAC \\
+ --client-ca-file=/var/lib/kubernetes/ca.pem \\
+ --enable-swagger-ui=true \\
+ --event-ttl=1h \\
+ --kubelet-certificate-authority=/var/lib/kubernetes/ca.pem \\
+ --kubelet-client-certificate=/var/lib/kubernetes/kubernetes.pem \\
+ --kubelet-client-key=/var/lib/kubernetes/kubernetes-key.pem \\
+ --kubelet-https=true \\
+ --runtime-config=api/all \\
+ --service-account-key-file=/var/lib/kubernetes/service-account.pem \\
+ --service-node-port-range=30000-32767 \\
+ --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \\
+ --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem"
+EOF
+
+mkdir -p /var/lib/kubernetes
+cp /vagrant/configs/ca.pem                  /var/lib/kubernetes/
+cp /vagrant/configs/ca-key.pem              /var/lib/kubernetes/
+cp /vagrant/configs/kubernetes-key.pem      /var/lib/kubernetes/
+cp /vagrant/configs/kubernetes.pem          /var/lib/kubernetes/
+cp /vagrant/configs/service-account-key.pem /var/lib/kubernetes/
+cp /vagrant/configs/service-account.pem     /var/lib/kubernetes/
+cp /vagrant/configs/encryption-config.yaml  /var/lib/kubernetes/
+chown -R kube: /var/lib/kubernetes
+
+systemctl enable --now kube-apiserver
