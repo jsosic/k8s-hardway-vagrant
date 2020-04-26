@@ -18,10 +18,10 @@ Vagrant.configure(2) do |config|
     v.customize ["modifyvm", :id, "--ioapic", "on"]
   end
 
-  config.vm.box = "centos/8"
+  config.vm.box = "centos/7"
   config.vm.network :forwarded_port, guest:  22, host: 4222, id: "ssh"
 
-  # CentOS 7 - Kubernetes controller(s)
+  # CentOS - Kubernetes controller(s)
   (1..3).each do |index|
     config.vm.define :"controller0#{index}" do |controller|
       set_resources(controller.vm, cpu: 1, ram: 2048)
@@ -32,7 +32,7 @@ Vagrant.configure(2) do |config|
     end
   end
 
-  # CentOS 7 - Kubernetes worker(s)
+  # CentOS - Kubernetes worker(s)
   (1..3).each do |index|
     config.vm.define :"worker0#{index}" do |worker|
       set_resources(worker.vm, cpu:1, ram: 1024)
